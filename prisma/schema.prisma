@@ -1,0 +1,476 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// FELIX OS - Prisma Schema
+// Sistema SaaS Multi-tenant para Oficinas Mecânicas
+// ═══════════════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ───────────────────────────────────────────────────────────────────────────
+
+enum Plan {
+  BASIC
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum UserRole {
+  OWNER           // Dono da oficina
+  MANAGER         // Gerente
+  MECHANIC        // Mecânico
+  RECEPTIONIST    // Recepcionista
+}
+
+enum OSStatus {
+  DRAFT               // Rascunho
+  DIAGNOSING          // Em diagnóstico
+  QUOTING             // Orçando
+  WAITING_APPROVAL    // Aguardando aprovação do cliente
+  APPROVED            // Aprovado pelo cliente
+  IN_PROGRESS         // Em execução
+  QUALITY_CHECK       // Checagem de qualidade
+  COMPLETED           // Concluído
+  DELIVERED           // Entregue ao cliente
+  CANCELLED           // Cancelado
+}
+
+enum FuelType {
+  FLEX
+  GASOLINE
+  ETHANOL
+  DIESEL
+  ELECTRIC
+  HYBRID
+}
+
+enum TransmissionType {
+  MANUAL
+  AUTOMATIC
+  CVT
+  AUTOMATED
+}
+
+enum ItemType {
+  PART              // Peça
+  SERVICE           // Serviço/Mão de obra
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIALLY_PAID
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  PIX
+  BANK_TRANSFER
+  INSTALLMENT
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// TENANT (Oficina)
+// ───────────────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id                String    @id @default(uuid())
+  name              String    // Nome da oficina
+  tradeName         String?   // Nome fantasia
+  cnpj              String    @unique
+  phone             String
+  whatsapp          String?
+  email             String
+  
+  // Endereço
+  street            String
+  number            String
+  complement        String?
+  neighborhood      String
+  city              String
+  state             String
+  zipCode           String
+  
+  // Configurações
+  logo              String?
+  primaryColor      String    @default("#1E40AF")
+  settings          Json      @default("{}")
+  
+  // Plano e limites
+  plan              Plan      @default(BASIC)
+  maxUsers          Int       @default(3)
+  maxVehicles       Int       @default(100)
+  
+  // Markup padrão
+  defaultMarkup     Decimal   @default(30) // Porcentagem
+  defaultLaborRate  Decimal   @default(150) // R$/hora
+  
+  // Relacionamentos
+  users             User[]
+  customers         Customer[]
+  vehicles          Vehicle[]
+  serviceOrders     ServiceOrder[]
+  inventory         InventoryItem[]
+  suppliers         Supplier[]
+  
+  // Timestamps
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  @@map("tenants")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// USER (Usuário da Oficina)
+// ───────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  
+  email         String
+  password      String
+  name          String
+  phone         String?
+  avatar        String?
+  role          UserRole  @default(MECHANIC)
+  
+  // Relacionamentos
+  serviceOrders ServiceOrder[]  @relation("CreatedBy")
+  diagnostics   Diagnostic[]
+  
+  // Timestamps
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// CUSTOMER (Cliente da Oficina)
+// ───────────────────────────────────────────────────────────────────────────
+
+model Customer {
+  id            String    @id @default(uuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  
+  name          String
+  cpfCnpj       String?
+  email         String?
+  phone         String
+  whatsapp      String?
+  
+  // Endereço
+  street        String?
+  number        String?
+  complement    String?
+  neighborhood  String?
+  city          String?
+  state         String?
+  zipCode       String?
+  
+  // Observações
+  notes         String?
+  
+  // Relacionamentos
+  vehicles      Vehicle[]
+  serviceOrders ServiceOrder[]
+  
+  // Timestamps
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  @@unique([tenantId, cpfCnpj])
+  @@map("customers")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// VEHICLE (Veículo)
+// ───────────────────────────────────────────────────────────────────────────
+
+model Vehicle {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  
+  // Identificação
+  plate           String
+  chassi          String?
+  renavam         String?
+  
+  // Dados do veículo
+  brand           String    // Marca (ex: Volkswagen)
+  model           String    // Modelo (ex: Gol)
+  version         String?   // Versão (ex: 1.0 MPI)
+  year            Int       // Ano fabricação
+  modelYear       Int       // Ano modelo
+  color           String?
+  
+  // Especificações
+  fuelType        FuelType  @default(FLEX)
+  transmission    TransmissionType @default(MANUAL)
+  engine          String?   // Motor (ex: 1.0, 2.0 TSI)
+  mileage         Int       @default(0)
+  
+  // Observações
+  notes           String?
+  
+  // Relacionamentos
+  serviceOrders   ServiceOrder[]
+  
+  // Timestamps
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  @@unique([tenantId, plate])
+  @@map("vehicles")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// SERVICE ORDER (Ordem de Serviço)
+// ───────────────────────────────────────────────────────────────────────────
+
+model ServiceOrder {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  
+  // Número sequencial por tenant
+  number          Int
+  
+  // Relacionamentos principais
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  vehicleId       String
+  vehicle         Vehicle   @relation(fields: [vehicleId], references: [id])
+  createdById     String
+  createdBy       User      @relation("CreatedBy", fields: [createdById], references: [id])
+  
+  // Status
+  status          OSStatus  @default(DRAFT)
+  
+  // Dados de entrada
+  mileageIn       Int?      // Km na entrada
+  fuelLevel       Int?      // Nível de combustível (0-100)
+  entryNotes      String?   // Observações de entrada
+  entryPhotos     String[]  // URLs das fotos de entrada
+  
+  // Dados de saída
+  mileageOut      Int?      // Km na saída
+  exitNotes       String?   // Observações de saída
+  exitPhotos      String[]  // URLs das fotos de saída
+  
+  // Valores
+  totalParts      Decimal   @default(0)
+  totalLabor      Decimal   @default(0)
+  discount        Decimal   @default(0)
+  totalPrice      Decimal   @default(0)
+  
+  // Pagamento
+  paymentStatus   PaymentStatus @default(PENDING)
+  paymentMethod   PaymentMethod?
+  paidAt          DateTime?
+  
+  // Relacionamentos
+  items           OSItem[]
+  diagnostics     Diagnostic[]
+  payments        Payment[]
+  
+  // Datas importantes
+  approvedAt      DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  deliveredAt     DateTime?
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  @@unique([tenantId, number])
+  @@map("service_orders")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// OS ITEM (Item da OS - Peça ou Serviço)
+// ───────────────────────────────────────────────────────────────────────────
+
+model OSItem {
+  id              String    @id @default(uuid())
+  serviceOrderId  String
+  serviceOrder    ServiceOrder @relation(fields: [serviceOrderId], references: [id])
+  
+  type            ItemType  @default(PART)
+  
+  // Descrição
+  description     String
+  partNumber      String?   // Código da peça
+  brand           String?   // Marca da peça
+  
+  // Valores
+  quantity        Decimal   @default(1)
+  unitCost        Decimal   @default(0)  // Custo unitário
+  unitPrice       Decimal   @default(0)  // Preço de venda unitário
+  totalPrice      Decimal   @default(0)  // Preço total
+  
+  // Para mão de obra
+  laborHours      Decimal?  // Horas de trabalho
+  laborRate       Decimal?  // Valor/hora
+  
+  // Relacionamento com estoque
+  inventoryItemId String?
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("os_items")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// DIAGNOSTIC (Diagnóstico por Voz)
+// ───────────────────────────────────────────────────────────────────────────
+
+model Diagnostic {
+  id              String    @id @default(uuid())
+  serviceOrderId  String
+  serviceOrder    ServiceOrder @relation(fields: [serviceOrderId], references: [id])
+  mechanicId      String
+  mechanic        User      @relation(fields: [mechanicId], references: [id])
+  
+  // Áudio original
+  audioUrl        String?   // URL do áudio gravado
+  audioDuration   Int?      // Duração em segundos
+  
+  // Transcrição
+  transcription   String?   // Texto transcrito pelo Whisper
+  
+  // Entidades extraídas (pelo GPT)
+  extractedParts  Json?     // [{part: "amortecedor", position: "dianteiro esquerdo", action: "substituir"}]
+  extractedSymptoms Json?   // [{symptom: "vazamento", severity: "high"}]
+  
+  // Timestamps
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("diagnostics")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// INVENTORY (Estoque)
+// ───────────────────────────────────────────────────────────────────────────
+
+model InventoryItem {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  
+  // Identificação
+  name            String
+  partNumber      String?
+  barcode         String?
+  brand           String?
+  
+  // Estoque
+  quantity        Decimal   @default(0)
+  minQuantity     Decimal   @default(1)  // Estoque mínimo
+  location        String?   // Localização no estoque
+  
+  // Valores
+  costPrice       Decimal   @default(0)
+  salePrice       Decimal   @default(0)
+  
+  // Relacionamentos
+  supplierId      String?
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  osItems         OSItem[]
+  
+  // Timestamps
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, partNumber])
+  @@map("inventory_items")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// SUPPLIER (Fornecedor)
+// ───────────────────────────────────────────────────────────────────────────
+
+model Supplier {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  
+  name            String
+  cnpj            String?
+  phone           String?
+  email           String?
+  website         String?
+  
+  // API de cotação
+  apiEndpoint     String?
+  apiKey          String?
+  
+  // Relacionamentos
+  inventoryItems  InventoryItem[]
+  
+  // Timestamps
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("suppliers")
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// PAYMENT (Pagamento)
+// ───────────────────────────────────────────────────────────────────────────
+
+model Payment {
+  id              String    @id @default(uuid())
+  serviceOrderId  String
+  serviceOrder    ServiceOrder @relation(fields: [serviceOrderId], references: [id])
+  
+  amount          Decimal
+  method          PaymentMethod
+  
+  // Dados do pagamento
+  transactionId   String?   // ID da transação (PIX, cartão)
+  installments    Int       @default(1)
+  
+  notes           String?
+  
+  // Timestamps
+  paidAt          DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  @@map("payments")
+}

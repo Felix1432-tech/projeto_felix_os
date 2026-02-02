@@ -1,0 +1,221 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# FELIX OS - STATE.yaml
+# Fonte única de verdade sobre o estado atual do projeto
+# ═══════════════════════════════════════════════════════════════════════════
+
+metadata:
+  project: felix-os
+  version: "1.0.0"
+  description: "Sistema SaaS de Gestão para Oficinas Mecânicas"
+  owner: "Felix Garage"
+  created_at: "2026-02-01"
+  last_updated: "2026-02-01T15:16:00-03:00"
+
+# ───────────────────────────────────────────────────────────────────────────
+# ESTADO ATUAL DO TRABALHO
+# ───────────────────────────────────────────────────────────────────────────
+status: IN_PROGRESS
+
+active_work:
+  phase: "MVP"
+  current_task: "DTOs e validação completos"
+  started_at: "2026-02-01T20:30:00-03:00"
+  blocked: false
+  blocker_reason: null
+
+# ───────────────────────────────────────────────────────────────────────────
+# PROGRESSO POR FASE
+# ───────────────────────────────────────────────────────────────────────────
+phases:
+  fase_1_mvp:
+    name: "Recepção e Diagnóstico"
+    status: COMPLETE
+    progress: 100%
+    tasks:
+      - id: T001
+        name: "Setup do projeto NestJS"
+        status: DONE
+        priority: P0
+      - id: T002
+        name: "Configuração Prisma + PostgreSQL"
+        status: DONE
+        priority: P0
+      - id: T003
+        name: "Módulo de Autenticação"
+        status: DONE
+        priority: P0
+      - id: T004
+        name: "Módulo de Tenants (Multi-tenant)"
+        status: DONE
+        priority: P0
+      - id: T005
+        name: "Módulo de Veículos"
+        status: DONE
+        priority: P1
+      - id: T006
+        name: "Módulo de Clientes"
+        status: DONE
+        priority: P1
+      - id: T007
+        name: "Módulo de Ordens de Serviço"
+        status: DONE
+        priority: P1
+      - id: T007.1
+        name: "Módulo de Usuários (CRUD)"
+        status: DONE
+        priority: P1
+      - id: T007.2
+        name: "DTOs e Validação"
+        status: DONE
+        priority: P1
+      - id: T007.3
+        name: "Seed de dados"
+        status: DONE
+        priority: P1
+      - id: T008
+        name: "Integração OCR (Google Vision)"
+        status: TODO
+        priority: P2
+      - id: T009
+        name: "Integração Voz (Whisper)"
+        status: DONE
+        priority: P2
+      - id: T009.1
+        name: "Módulo de Diagnósticos"
+        status: DONE
+        priority: P1
+      - id: T009.2
+        name: "Extração de Entidades (GPT)"
+        status: DONE
+        priority: P1
+      - id: T010
+        name: "Frontend Next.js - Setup"
+        status: DONE
+        priority: P1
+      - id: T010.1
+        name: "Página de Login"
+        status: DONE
+        priority: P1
+      - id: T010.2
+        name: "Dashboard com Stats"
+        status: DONE
+        priority: P1
+      - id: T010.3
+        name: "Página de Diagnóstico por Voz"
+        status: DONE
+        priority: P1
+      - id: T010.4
+        name: "Página de Clientes (CRUD)"
+        status: DONE
+        priority: P1
+      - id: T010.5
+        name: "Página de Veículos (CRUD)"
+        status: DONE
+        priority: P1
+      - id: T010.6
+        name: "Página de Ordens de Serviço"
+        status: DONE
+        priority: P1
+      - id: T010.7
+        name: "Detalhe da OS com Itens"
+        status: DONE
+        priority: P1
+
+  fase_2_comercial:
+    name: "Inteligência Comercial"
+    status: BLOCKED
+    blocked_by: "fase_1_mvp"
+    progress: 0%
+    tasks:
+      - id: T011
+        name: "Módulo de Orçamentos"
+        status: TODO
+      - id: T012
+        name: "Módulo de Fornecedores"
+        status: TODO
+      - id: T013
+        name: "Motor de Cotação Automática"
+        status: TODO
+      - id: T014
+        name: "Cálculo de Markup e Margem"
+        status: TODO
+
+  fase_3_comunicacao:
+    name: "Comunicação e Escala"
+    status: BLOCKED
+    blocked_by: "fase_2_comercial"
+    progress: 0%
+    tasks:
+      - id: T015
+        name: "Integração WhatsApp (Evolution)"
+        status: TODO
+      - id: T016
+        name: "Sistema de Aprovação Online"
+        status: TODO
+      - id: T017
+        name: "Notificações Automáticas"
+        status: TODO
+
+# ───────────────────────────────────────────────────────────────────────────
+# DECISÕES ARQUITETURAIS
+# ───────────────────────────────────────────────────────────────────────────
+decisions:
+  - id: ADR-001
+    date: "2026-02-01"
+    title: "Monolito Modular vs Microservices"
+    decision: "Monolito Modular com NestJS"
+    rationale: "Complexidade reduzida para MVP, fácil de extrair módulos depois"
+    
+  - id: ADR-002
+    date: "2026-02-01"
+    title: "Estratégia Multi-tenant"
+    decision: "Single Database com tenant_id em todas as tabelas"
+    rationale: "Simplifica backup, migrations e queries"
+    
+  - id: ADR-003
+    date: "2026-02-01"
+    title: "Processamento de Voz"
+    decision: "OpenAI Whisper API + GPT-4 para extração"
+    rationale: "Melhor qualidade de transcrição e entendimento de contexto mecânico"
+
+# ───────────────────────────────────────────────────────────────────────────
+# CONFIGURAÇÕES DO AMBIENTE
+# ───────────────────────────────────────────────────────────────────────────
+environment:
+  development:
+    database_url: "postgresql://postgres:postgres@localhost:5432/felixos_dev"
+    redis_url: "redis://localhost:6379"
+    
+  production:
+    database_url: "${DATABASE_URL}"
+    redis_url: "${REDIS_URL}"
+    coolify_domain: "felixos.seudominio.com"
+
+# ───────────────────────────────────────────────────────────────────────────
+# MÉTRICAS DE SUCESSO
+# ───────────────────────────────────────────────────────────────────────────
+success_metrics:
+  mvp:
+    - metric: "Tempo de cadastro de veículo"
+      target: "< 30 segundos"
+      current: null
+    - metric: "Tempo de diagnóstico por voz"
+      target: "< 60 segundos"
+      current: null
+    - metric: "Precisão do OCR de placa"
+      target: "> 95%"
+      current: null
+
+# ───────────────────────────────────────────────────────────────────────────
+# PRÓXIMAS AÇÕES
+# ───────────────────────────────────────────────────────────────────────────
+next_actions:
+  - action: "Inicializar projeto NestJS"
+    assignee: "Claude Code"
+    deadline: "2026-02-01"
+  - action: "Configurar Prisma schema"
+    assignee: "Claude Code"
+    deadline: "2026-02-01"
+  - action: "Criar módulo de autenticação"
+    assignee: "Claude Code"
+    deadline: "2026-02-02"
