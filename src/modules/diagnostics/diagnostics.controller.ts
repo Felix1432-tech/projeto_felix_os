@@ -23,13 +23,17 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { DiagnosticsService } from './diagnostics.service';
 import { CreateDiagnosticDto, ProcessTranscriptionDto } from './dto/diagnostic.dto';
+import { VisionService } from '../../common/services/vision.service';
 
 @ApiTags('diagnostics')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'))
 @Controller('diagnostics')
 export class DiagnosticsController {
-  constructor(private readonly diagnosticsService: DiagnosticsService) {}
+  constructor(
+    private readonly diagnosticsService: DiagnosticsService,
+    private readonly visionService: VisionService,
+  ) {}
 
   @Get('service-order/:serviceOrderId')
   @ApiOperation({ summary: 'Listar diagnósticos de uma OS' })
@@ -237,5 +241,173 @@ export class DiagnosticsController {
     }
 
     return result;
+  }
+
+  @Post('analyze-image')
+  @UseInterceptors(FileInterceptor('image'))
+  @ApiOperation({ summary: 'Analisar foto de peça/componente com IA (GPT-4 Vision)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: 'Foto da peça/componente a ser analisada',
+        },
+        context: {
+          type: 'string',
+          description: 'Contexto adicional do mecânico (opcional)',
+          example: 'Cliente reclamou de barulho ao frear',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Análise da imagem concluída',
+    schema: {
+      properties: {
+        description: { type: 'string' },
+        parts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              condition: { type: 'string', enum: ['good', 'worn', 'damaged', 'critical'] },
+              notes: { type: 'string' },
+            },
+          },
+        },
+        issues: { type: 'array', items: { type: 'string' } },
+        recommendations: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  })
+  async analyzeImage(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('context') context?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Imagem é obrigatória');
+    }
+
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedMimes.includes(file.mimetype)) {
+      throw new BadRequestException('Formato de imagem não suportado. Use JPEG, PNG, WebP ou GIF');
+    }
+
+    const analysis = await this.visionService.analyzePartImage(file.buffer, context);
+
+    return {
+      ...analysis,
+      message: `Análise concluída: ${analysis.parts.length} peça(s) identificada(s), ${analysis.issues.length} problema(s) detectado(s)`,
+    };
+  }
+
+  @Post('analyze-image/:serviceOrderId')
+  @UseInterceptors(FileInterceptor('image'))
+  @ApiOperation({ summary: 'Analisar foto e adicionar ao diagnóstico da OS' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        image: {
+          type: 'string',
+          format: 'binary',
+          description: 'Foto da peça/componente',
+        },
+        context: {
+          type: 'string',
+          description: 'Contexto adicional do mecânico',
+        },
+        autoCreateItems: {
+          type: 'boolean',
+          description: 'Criar itens automaticamente na OS',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Imagem analisada e diagnóstico criado' })
+  async analyzeImageForOS(
+    @Request() req,
+    @Param('serviceOrderId', ParseUUIDPipe) serviceOrderId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('context') context?: string,
+    @Body('autoCreateItems') autoCreateItems?: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Imagem é obrigatória');
+    }
+
+    // Analisar imagem
+    const analysis = await this.visionService.analyzePartImage(file.buffer, context);
+
+    // Converter análise de imagem para texto de diagnóstico
+    const diagnosticText = this.formatImageAnalysisAsDiagnostic(analysis);
+
+    // Criar diagnóstico
+    const diagnostic = await this.diagnosticsService.create(
+      req.user.tenantId,
+      req.user.sub,
+      { serviceOrderId },
+    );
+
+    // Processar como texto
+    const result = await this.diagnosticsService.processTranscription(
+      req.user.tenantId,
+      diagnostic.id,
+      diagnosticText,
+    );
+
+    // Criar itens se solicitado
+    if (autoCreateItems === 'true' && result.extraction.parts.length > 0) {
+      const itemsResult = await this.diagnosticsService.createItemsFromExtraction(
+        req.user.tenantId,
+        diagnostic.id,
+      );
+      return {
+        ...result,
+        imageAnalysis: analysis,
+        items: itemsResult.items,
+      };
+    }
+
+    return {
+      ...result,
+      imageAnalysis: analysis,
+    };
+  }
+
+  /**
+   * Converte análise de imagem em texto para processamento de diagnóstico
+   */
+  private formatImageAnalysisAsDiagnostic(analysis: any): string {
+    const lines: string[] = [];
+
+    lines.push(`Análise visual: ${analysis.description}`);
+
+    for (const part of analysis.parts) {
+      const conditionMap: Record<string, string> = {
+        good: 'em bom estado',
+        worn: 'com desgaste',
+        damaged: 'danificado',
+        critical: 'em estado crítico, troca urgente',
+      };
+      lines.push(`${part.name}: ${conditionMap[part.condition] || part.condition}. ${part.notes}`);
+    }
+
+    if (analysis.issues.length > 0) {
+      lines.push(`Problemas identificados: ${analysis.issues.join(', ')}`);
+    }
+
+    if (analysis.recommendations.length > 0) {
+      lines.push(`Recomendações: ${analysis.recommendations.join(', ')}`);
+    }
+
+    return lines.join('. ');
   }
 }
